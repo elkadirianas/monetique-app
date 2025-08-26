@@ -1,0 +1,10 @@
+FROM python:3.11-slim
+
+WORKDIR /APP
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --timeout=300 --retries=3 -r requirements.txt
+
+COPY ./etl/ /APP/etl
+
+CMD ["python", "/APP/etl/generator.py"]

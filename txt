@@ -1,0 +1,39 @@
+monetique_monitoring/
+├── etl/
+│   ├── generator.py             # inserts fake tx into source (simulates Oracle)
+│   ├── etl_job.py               # ETL pipeline (source → app)
+│   ├── utils.py                 # common helpers (db connections, logging)
+│   └── __init__.py
+├── db/
+│   ├── postgres_source/
+│   │   └── init/01_schema.sql   # source schema + seed
+│   ├── postgres_app/
+│   │   └── init/01_schema.sql   # app schema (fact_transactions)
+├── deploy/
+│   ├── docker-compose.yml       # 2 Postgres services + pgadmin
+│   └── docker/
+│       ├── Dockerfile.etl       # container for running generator & etl_job
+├── requirements.txt
+└── README.md
+
+
+monetique_monitoring/
+├── apps/
+│   ├── api/                     # Backend FastAPI
+│   │   ├── main.py              # Point d’entrée
+│   │   ├── config.py            # Variables d’env
+│   │   ├── db.py                # Connexion PostgreSQL (appdb)
+│   │   ├── models.py            # SQLAlchemy models
+│   │   ├── schemas.py           # Pydantic schemas
+│   │   ├── routes/
+│   │   │   ├── transactions.py  # Endpoints transactions
+│   │   │   └── stats.py         # Endpoints agrégations / KPI
+│   │   └── __init__.py
+│   └── dashboard/               # Frontend Dash/Plotly
+│       ├── app_dash.py
+│       └── components/          # Graphiques réutilisables
+├── deploy/
+│   ├── docker/
+│   │   ├── Dockerfile.api
+│   │   └── Dockerfile.dashboard
+│   └── docker-compose.yml

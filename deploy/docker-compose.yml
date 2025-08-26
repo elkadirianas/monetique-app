@@ -1,0 +1,86 @@
+version: "3.9"
+
+services:
+  postgres_app:
+    image: postgres:16
+    container_name: postgres_app
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: appdb
+    ports:
+      - "5434:5432"
+    volumes:
+      - ../db/postgres_app/init:/docker-entrypoint-initdb.d:ro
+
+  postgres_source:
+    image: postgres:16
+    container_name: postgres_source
+    environment:
+      POSTGRES_USER: source
+      POSTGRES_PASSWORD: source
+      POSTGRES_DB: sourcedb
+    ports:
+      - "5433:5432"
+    volumes:
+      - ../db/postgres_source/init:/docker-entrypoint-initdb.d:ro
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres_app
+      - postgres_source
+
+  api_service:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.api
+    container_name: api_service
+    volumes:
+      - ../apps/api:/app
+    environment:
+      DATABASE_URL: postgresql+psycopg2://app:app@postgres_app:5432/appdb
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres_app
+
+  dashboard_service:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.dashboard
+    container_name: dashboard_service
+    volumes:
+      - ../apps/dashboard:/app
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api_service
+
+  etl_job:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.etl
+    container_name: etl_job
+    volumes:
+      - ../etl:/app
+    depends_on:
+      - postgres_app
+      - postgres_source
+
+  generator_service:
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile.generator
+    container_name: generator_service
+    volumes:
+      - ../etl:/app
+    depends_on:
+      - postgres_source
+    restart: unless-stopped

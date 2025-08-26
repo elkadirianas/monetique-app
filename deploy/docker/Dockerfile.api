@@ -1,0 +1,14 @@
+# deploy/docker/Dockerfile.api
+FROM python:3.11-slim
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y build-essential libpq-dev && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir --timeout=300 --retries=3 -r requirements.txt
+
+# Copy only the API app
+COPY apps/api /app
+
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
