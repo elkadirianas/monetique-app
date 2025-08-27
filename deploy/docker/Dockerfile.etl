@@ -1,7 +1,10 @@
 FROM python:3.11-slim
 
-WORKDIR /app
+WORKDIR /APP
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir --timeout=300 --retries=3 -r requirements.txt
 
-# we don't COPY etl/ here, because docker-compose mounts it
+COPY ./etl/ /APP/etl
+
+CMD ["python", "/APP/etl/etl_job.py"]
