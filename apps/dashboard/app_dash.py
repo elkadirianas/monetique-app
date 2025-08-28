@@ -1,16 +1,16 @@
 import dash
-from dash import dcc, html, Output, Input, dash_table
+from dash import dcc, html, Output, Input, State, dash_table
 import plotly.express as px
 import plotly.graph_objects as go
 import requests
 import pandas as pd
+import dash.exceptions
 
 API_URL = "http://api_service:8000/api"
 
 app = dash.Dash(__name__, title="Supervision Monétique")
 app.title = "Supervision Monétique"
 
-# ---------- Utils ----------
 def check_connectivity():
     try:
         resp = requests.get(f"{API_URL}/transactions?limit=1", timeout=3)
@@ -21,9 +21,12 @@ def check_connectivity():
         print(f"API connectivity failed: {e}")
         return False
 
-def get_data(limit=100):
+def get_data(limit=100, token=None):
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
-        resp = requests.get(f"{API_URL}/transactions?limit={limit}", timeout=10)
+        resp = requests.get(f"{API_URL}/transactions?limit={limit}", timeout=10, headers=headers)
         resp.raise_for_status()
         data = resp.json()
         df = pd.DataFrame(data)
@@ -31,6 +34,15 @@ def get_data(limit=100):
     except requests.exceptions.RequestException as e:
         print(f"Error fetching data: {e}")
         return pd.DataFrame(columns=["iface", "status", "amount", "ts"])
+
+def login_api(username, password):
+    try:
+        resp = requests.post(f"{API_URL}/login", json={"username": username, "password": password}, timeout=5)
+        resp.raise_for_status()
+        return resp.json().get("access_token", None)
+    except Exception as e:
+        print(f"Login failed: {e}")
+        return None
 
 # ---------- Enhanced Figures ----------
 def transactions_by_iface(df):
@@ -146,6 +158,36 @@ app.layout = html.Div(
         "padding": "0"
     },
     children=[
+        dcc.Store(id="jwt-store", storage_type="session"),
+        html.Div(id="main-content"),
+    ]
+)
+
+# ---------- Login Form ----------
+def login_form(error_msg=None):
+    return html.Div(
+        style={
+            "maxWidth": "400px",
+            "margin": "80px auto",
+            "backgroundColor": "#FFFFFF",
+            "borderRadius": "12px",
+            "boxShadow": "0 1px 6px 0 rgba(0,0,0,0.12)",
+            "padding": "32px"
+        },
+        children=[
+            html.H2("🔒 Login", style={"textAlign": "center", "marginBottom": "24px"}),
+            dcc.Input(id="login-username", type="text", placeholder="Username", style={"width": "100%", "marginBottom": "16px", "padding": "12px"}),
+            dcc.Input(id="login-password", type="password", placeholder="Password", style={"width": "100%", "marginBottom": "16px", "padding": "12px"}),
+            html.Button("Login", id="login-btn", n_clicks=0, style={"width": "100%", "padding": "12px", "backgroundColor": "#3B82F6", "color": "white", "border": "none", "borderRadius": "6px", "fontWeight": "600"}),
+            html.Div(error_msg or "", id="login-error", style={"color": "#EF4444", "marginTop": "16px", "textAlign": "center"}),
+            # Hidden logout button to avoid missing ID error
+            html.Button("Logout", id="logout-btn", n_clicks=0, style={"display": "none"})
+        ]
+    )
+
+# ---------- Main Dashboard Content ----------
+def dashboard_content():
+    return html.Div([
         # Header
         html.Div(
             style={
@@ -173,79 +215,28 @@ app.layout = html.Div(
                         "color": "#6B7280",
                         "textAlign": "center"
                     }
-                )
+                ),
+                html.Button("Logout", id="logout-btn", n_clicks=0, style={"float": "right", "backgroundColor": "#EF4444", "color": "white", "border": "none", "borderRadius": "6px", "padding": "8px 16px", "fontWeight": "600"})
             ]
         ),
-
-        # Auto-refresh interval
         dcc.Interval(id="refresh", interval=8000, n_intervals=0),
-
-        # Main content container
         html.Div(
             style={"maxWidth": "1400px", "margin": "0 auto", "padding": "0 32px"},
             children=[
-                # Metrics Cards
-                html.Div(
-                    id="metrics-container",
-                    style={
-                        "display": "grid",
-                        "gridTemplateColumns": "repeat(auto-fit, minmax(250px, 1fr))",
-                        "gap": "24px",
-                        "marginBottom": "32px"
-                    }
-                ),
-
-                # Charts Row 1
+                html.Div(id="metrics-container", style={"display": "grid", "gridTemplateColumns": "repeat(auto-fit, minmax(250px, 1fr))", "gap": "24px", "marginBottom": "32px"}),
                 html.Div([
                     html.Div([
-                        html.Div(
-                            dcc.Graph(id="graph-status-dist", style={"height": "350px"}),
-                            style={
-                                "backgroundColor": "#FFFFFF",
-                                "borderRadius": "12px",
-                                "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
-                                "padding": "20px"
-                            }
-                        )
+                        html.Div(dcc.Graph(id="graph-status-dist", style={"height": "350px"}), style={"backgroundColor": "#FFFFFF", "borderRadius": "12px", "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)", "padding": "20px"})
                     ], style={"width": "48%", "display": "inline-block", "marginRight": "4%"}),
-
                     html.Div([
-                        html.Div(
-                            dcc.Graph(id="graph-amount", style={"height": "350px"}),
-                            style={
-                                "backgroundColor": "#FFFFFF",
-                                "borderRadius": "12px",
-                                "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
-                                "padding": "20px"
-                            }
-                        )
+                        html.Div(dcc.Graph(id="graph-amount", style={"height": "350px"}), style={"backgroundColor": "#FFFFFF", "borderRadius": "12px", "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)", "padding": "20px"})
                     ], style={"width": "48%", "display": "inline-block"}),
                 ], style={"marginBottom": "32px"}),
-
-                # Charts Row 2
                 html.Div([
-                    html.Div(
-                        dcc.Graph(id="graph-transactions", style={"height": "400px"}),
-                        style={
-                            "backgroundColor": "#FFFFFF",
-                            "borderRadius": "12px",
-                            "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
-                            "padding": "20px"
-                        }
-                    )
+                    html.Div(dcc.Graph(id="graph-transactions", style={"height": "400px"}), style={"backgroundColor": "#FFFFFF", "borderRadius": "12px", "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)", "padding": "20px"})
                 ], style={"marginBottom": "32px"}),
-
-                # Data Table Section
                 html.Div([
-                    html.H3(
-                        "📋 Recent Transactions",
-                        style={
-                            "fontSize": "24px",
-                            "fontWeight": "600",
-                            "color": "#1F2937",
-                            "marginBottom": "20px"
-                        }
-                    ),
+                    html.H3("📋 Recent Transactions", style={"fontSize": "24px", "fontWeight": "600", "color": "#1F2937", "marginBottom": "20px"}),
                     html.Div(
                         dash_table.DataTable(
                             id="transactions-table",
@@ -257,128 +248,100 @@ app.layout = html.Div(
                             ],
                             data=[],
                             page_size=15,
-                            style_table={
-                                "overflowX": "auto",
-                                "borderRadius": "8px",
-                                "overflow": "hidden"
-                            },
-                            style_cell={
-                                "padding": "12px 16px",
-                                "textAlign": "left",
-                                "fontSize": "14px",
-                                "fontFamily": "'Inter', sans-serif",
-                                "border": "none",
-                                "borderBottom": "1px solid #E5E7EB"
-                            },
-                            style_header={
-                                "backgroundColor": "#F9FAFB",
-                                "color": "#374151",
-                                "fontWeight": "600",
-                                "fontSize": "14px",
-                                "textTransform": "uppercase",
-                                "letterSpacing": "0.05em",
-                                "border": "none",
-                                "borderBottom": "2px solid #E5E7EB"
-                            },
+                            style_table={"overflowX": "auto", "borderRadius": "8px", "overflow": "hidden"},
+                            style_cell={"padding": "12px 16px", "textAlign": "left", "fontSize": "14px", "fontFamily": "'Inter', sans-serif", "border": "none", "borderBottom": "1px solid #E5E7EB"},
+                            style_header={"backgroundColor": "#F9FAFB", "color": "#374151", "fontWeight": "600", "fontSize": "14px", "textTransform": "uppercase", "letterSpacing": "0.05em", "border": "none", "borderBottom": "2px solid #E5E7EB"},
                             style_data_conditional=[
-                                {
-                                    'if': {'filter_query': '{status} = success'},
-                                    'backgroundColor': '#F0FDF4',
-                                    'color': '#166534',
-                                },
-                                {
-                                    'if': {'filter_query': '{status} = failed'},
-                                    'backgroundColor': '#FEF2F2',
-                                    'color': '#991B1B',
-                                },
-                                {
-                                    'if': {'filter_query': '{status} = pending'},
-                                    'backgroundColor': '#FFFBEB',
-                                    'color': '#92400E',
-                                }
+                                {'if': {'filter_query': '{status} = success'}, 'backgroundColor': '#F0FDF4', 'color': '#166534'},
+                                {'if': {'filter_query': '{status} = failed'}, 'backgroundColor': '#FEF2F2', 'color': '#991B1B'},
+                                {'if': {'filter_query': '{status} = pending'}, 'backgroundColor': '#FFFBEB', 'color': '#92400E'}
                             ]
                         ),
-                        style={
-                            "backgroundColor": "#FFFFFF",
-                            "borderRadius": "12px",
-                            "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
-                            "padding": "20px"
-                        }
+                        style={"backgroundColor": "#FFFFFF", "borderRadius": "12px", "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)", "padding": "20px"}
                     )
                 ])
             ]
         )
-    ]
-)
+    ])
 
-# ---------- Enhanced Callbacks ----------
+
+# Main content switcher: show login or dashboard
+
+# Only use jwt-store for main-content switching
+@app.callback(
+    Output("main-content", "children"),
+    Input("jwt-store", "data"),
+)
+def show_content(jwt_data):
+    if jwt_data:
+        return dashboard_content()
+    return login_form()
+
+
+# Unified login/logout callback
+@app.callback(
+    Output("jwt-store", "data"),
+    Output("login-error", "children"),
+    [Input("login-btn", "n_clicks"), Input("logout-btn", "n_clicks")],
+    [State("login-username", "value"), State("login-password", "value")],
+    prevent_initial_call=True
+)
+def handle_auth(login_clicks, logout_clicks, username, password):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return dash.no_update, ""
+    trigger = ctx.triggered[0]["prop_id"].split(".")[0]
+    if trigger == "logout-btn" and logout_clicks:
+        return None, ""
+    if trigger == "login-btn" and login_clicks and username and password:
+        token = login_api(username, password)
+        if token:
+            return token, ""
+        else:
+            return dash.no_update, "Invalid username or password."
+    return dash.no_update, ""
+
+# Dashboard data update callback
 @app.callback(
     [Output("graph-transactions", "figure"),
      Output("graph-amount", "figure"),
      Output("graph-status-dist", "figure"),
      Output("transactions-table", "data"),
      Output("metrics-container", "children")],
-    Input("refresh", "n_intervals")
+    [Input("refresh", "n_intervals")],
+    [State("jwt-store", "data")]
 )
-def update_dashboard(n):
-    df = get_data(limit=100)
+def update_dashboard(n, token):
+    if not token:
+        raise dash.exceptions.PreventUpdate
+    df = get_data(limit=100, token=token)
     metrics = get_metrics(df)
-    
-    # Create metrics cards
     metrics_cards = [
         html.Div([
             html.Div([
                 html.H3(f"{metrics['total']:,}", style={"margin": "0", "fontSize": "28px", "fontWeight": "700", "color": "#1F2937"}),
                 html.P("Total Transactions", style={"margin": "4px 0 0 0", "fontSize": "14px", "color": "#6B7280", "fontWeight": "500"})
             ], style={"textAlign": "center"})
-        ], style={
-            "backgroundColor": "#FFFFFF",
-            "borderRadius": "12px",
-            "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
-            "padding": "24px",
-            "borderLeft": "4px solid #3B82F6"
-        }),
-        
+        ], style={"backgroundColor": "#FFFFFF", "borderRadius": "12px", "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)", "padding": "24px", "borderLeft": "4px solid #3B82F6"}),
         html.Div([
             html.Div([
                 html.H3(f"{metrics['success_rate']:.1f}%", style={"margin": "0", "fontSize": "28px", "fontWeight": "700", "color": "#10B981"}),
                 html.P("Success Rate", style={"margin": "4px 0 0 0", "fontSize": "14px", "color": "#6B7280", "fontWeight": "500"})
             ], style={"textAlign": "center"})
-        ], style={
-            "backgroundColor": "#FFFFFF",
-            "borderRadius": "12px",
-            "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
-            "padding": "24px",
-            "borderLeft": "4px solid #10B981"
-        }),
-        
+        ], style={"backgroundColor": "#FFFFFF", "borderRadius": "12px", "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)", "padding": "24px", "borderLeft": "4px solid #10B981"}),
         html.Div([
             html.Div([
                 html.H3(f"€{metrics['total_amount']:,.2f}", style={"margin": "0", "fontSize": "28px", "fontWeight": "700", "color": "#1F2937"}),
                 html.P("Total Amount", style={"margin": "4px 0 0 0", "fontSize": "14px", "color": "#6B7280", "fontWeight": "500"})
             ], style={"textAlign": "center"})
-        ], style={
-            "backgroundColor": "#FFFFFF",
-            "borderRadius": "12px",
-            "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
-            "padding": "24px",
-            "borderLeft": "4px solid #F59E0B"
-        }),
-        
+        ], style={"backgroundColor": "#FFFFFF", "borderRadius": "12px", "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)", "padding": "24px", "borderLeft": "4px solid #F59E0B"}),
         html.Div([
             html.Div([
-                html.H3(f"€{metrics['avg_amount']:.2f}", style={"margin": "0", "fontSize": "28px", "fontWeight": "700", "color": "#1F2937"}),
+                html.H3(f"€{metrics['avg_amount']:,.2f}", style={"margin": "0", "fontSize": "28px", "fontWeight": "700", "color": "#1F2937"}),
                 html.P("Average Amount", style={"margin": "4px 0 0 0", "fontSize": "14px", "color": "#6B7280", "fontWeight": "500"})
             ], style={"textAlign": "center"})
-        ], style={
-            "backgroundColor": "#FFFFFF",
-            "borderRadius": "12px",
-            "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)",
-            "padding": "24px",
-            "borderLeft": "4px solid #8B5CF6"
-        })
+        ], style={"backgroundColor": "#FFFFFF", "borderRadius": "12px", "boxShadow": "0 1px 3px 0 rgba(0, 0, 0, 0.1)", "padding": "24px", "borderLeft": "4px solid #8B5CF6"})
     ]
-    
     return (
         transactions_by_iface(df),
         amount_by_iface(df),
