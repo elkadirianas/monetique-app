@@ -1,9 +1,9 @@
 pydantic
-dash
 requests
 fastapi
 uvicorn
 psycopg2-binary
 sqlalchemy
 pandas
-plotly[express]
+passlib[bcrypt]
+python-jose
