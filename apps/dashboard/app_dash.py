@@ -8,7 +8,12 @@ import dash.exceptions
 
 API_URL = "http://api_service:8000/api"
 
-app = dash.Dash(__name__, title="Supervision Monétique")
+app = dash.Dash(
+    __name__,
+    title="Supervision Monétique",
+    suppress_callback_exceptions=True
+)
+
 app.title = "Supervision Monétique"
 
 def check_connectivity():
